@@ -1,0 +1,94 @@
+#!/usr/bin/env python3
+import tweepy, json, os
+
+# ==================== CONFIG ====================
+BEARER_TOKEN = "AAAAAAAAAAAAAAAAAAAAAEq42gEAAAAAMF0N83TUWoe6a3xqiTEo3lUAoY8%3DKxk1ZSlwVp9HqaJaj1fN8ebrrlj12ylR8eSGL55gSFEIDrOhac"
+ACCOUNTS = [
+    "elonmusk",
+    "TulsiGabbard",
+    "JeremyCorbell",
+    "WarMonitor",
+    "TheWarZoneTWZ",
+    "CaitlinJohns0n",
+    "NavalInstitute",
+    "ReutersWorld",
+    "DeptOfDefense",
+    "RussiaMFA"
+]
+CACHE_FILE = os.path.expanduser("~/.c4i_twitter_cache.json")
+
+# ==================== INIT ====================
+client = tweepy.Client(bearer_token=BEARER_TOKEN)
+
+if os.path.exists(CACHE_FILE):
+    with open(CACHE_FILE) as f:
+        cache = json.load(f)
+else:
+    cache = {"index": 0, "tweets": {}, "recent_tweets": []}
+
+# ==================== FUNCTION ====================
+def fetch_next_account_tweet():
+    user = ACCOUNTS[cache.get("index", 0) % len(ACCOUNTS)]
+    try:
+        user_id = client.get_user(username=user).data.id
+        tweets = client.get_users_tweets(
+            id=user_id,
+            max_results=5,
+            tweet_fields=['created_at','text'],
+            exclude=['retweets','replies']
+        )
+        tweet = tweets.data[0]
+        timestamp = tweet.created_at.strftime("%Y-%m-%d %H:%M:%S")
+        cache["tweets"][user] = {
+            "time": timestamp,
+            "text": tweet.text,
+            "status": "ok"
+        }
+    except tweepy.TooManyRequests:
+        # Keep last valid tweet if present
+        if user in cache.get("tweets", {}):
+            cache["tweets"][user]["status"] = "check pipe"
+    except Exception as e:
+        # Save an error placeholder if none exists
+        if user in cache.get("tweets", {}):
+            cache["tweets"][user]["status"] = f"error: {e}"
+        else:
+            cache["tweets"][user] = {
+                "time": "",
+                "text": "no tweet available",
+                "status": f"error: {e}"
+            }
+
+    # Ensure cache entry exists
+    if user not in cache["tweets"]:
+        cache["tweets"][user] = {
+            "time": "",
+            "text": "no tweet available",
+            "status": "no data"
+        }
+
+    # Append to rolling list
+    data = cache["tweets"][user]
+    cache["recent_tweets"].append(
+        f"[{user}] {data.get('time','')} ({data.get('status','')})\n"
+        f"{data.get('text','')}\n{'-'*80}"
+    )
+
+    # Increment index and save cache
+    cache["index"] = cache.get("index", 0) + 1
+    with open(CACHE_FILE, "w") as f:
+        json.dump(cache, f)
+
+    # Output every 10 tweets
+    if len(cache["recent_tweets"]) >= 10:
+        output = "\n".join(cache["recent_tweets"])
+        cache["recent_tweets"] = []
+        with open(CACHE_FILE, "w") as f:
+            json.dump(cache, f)
+        return output
+    else:
+        return "(collecting tweets...)"
+
+# ==================== TESTING ====================
+if __name__ == "__main__":
+    print(fetch_next_account_tweet())

@@ -1,0 +1,73 @@
+#!/usr/bin/env python3
+import json, os
+from c4i_time_resource import output_time_panel
+from c4i_alt_news import fetch_next_alt_article
+from c4i_contractor_news import fetch_next_contractor_article
+from c4i_twitter_feed import fetch_next_account_tweet
+from c4i_logger import log_error, log_data
+
+ALT_CACHE = os.path.expanduser("~/.c4i_alt_cache.json")
+CONTRACTOR_CACHE = os.path.expanduser("~/.c4i_contractor_cache.json")
+TWEETS_CACHE = os.path.expanduser("~/.c4i_twitter_cache.json")
+
+def load_cache(filepath):
+    if os.path.exists(filepath):
+        with open(filepath) as f:
+            return json.load(f)
+    return {}
+
+def save_cache(filepath, cache):
+    with open(filepath, "w") as f:
+        json.dump(cache, f)
+
+def get_current_data_snapshot():
+    time_info = output_time_panel()
+    time_text = (
+        f"[Central: {time_info['central_time']}] [Zulu: {time_info['zulu_time']}]\n"
+        f"Julian: {time_info['julian_date']:.4f} | Modified Julian: {time_info['modified_julian_date']:.4f}\n"
+        f"DDATE: {time_info['discordian_date']} (Year {time_info['thelemic_year']} AL)\n"
+        f"Sun: {time_info['sun_sign']} | Moon: {time_info['moon_sign']} | Rising: {time_info['rising_sign']}\n"
+        f"GST: {time_info['gst_hr']:.4f} hr | LST: {time_info['lst_hr']:.4f} hr\n"
+        f"Time until Galactic Noon: {time_info['time_until_galactic_noon_hr']} hr {time_info['time_until_galactic_noon_min']} min\n"
+    )
+
+    # Tweets
+    tweets_cache = load_cache(TWEETS_CACHE)
+    tweets_output = fetch_next_account_tweet()
+    if not tweets_output or "No new" in tweets_output:
+        tweets_output = tweets_cache.get("last_article", "")
+    else:
+        tweets_cache["last_article"] = tweets_output
+        log_data("tweets", tweets_output)
+    save_cache(TWEETS_CACHE, tweets_cache)
+
+    # Contractor
+    contractor_cache = load_cache(CONTRACTOR_CACHE)
+    contractor_article = fetch_next_contractor_article()
+    if not contractor_article or "No new" in contractor_article:
+        contractor_article = contractor_cache.get("last_article", "")
+    else:
+        contractor_cache["last_article"] = contractor_article
+        log_data("contractor", contractor_article)
+    save_cache(CONTRACTOR_CACHE, contractor_cache)
+
+    # Alt-media
+    alt_cache = load_cache(ALT_CACHE)
+    alt_article = fetch_next_alt_article()
+    if not alt_article or "No new" in alt_article:
+        alt_article = alt_cache.get("last_article", "")
+    else:
+        alt_cache["last_article"] = alt_article
+        log_data("alt_news", alt_article)
+    save_cache(ALT_CACHE, alt_cache)
+
+    return {
+        "time": time_text,
+        "tweets": tweets_output,
+        "contractor": contractor_article,
+        "alt_news": alt_article,
+    }
+
+if __name__ == "__main__":
+    snapshot = get_current_data_snapshot()
+    print(json.dumps(snapshot, indent=2))

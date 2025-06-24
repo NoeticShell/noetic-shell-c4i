@@ -1,0 +1,116 @@
+#!/usr/bin/env python3
+from skyfield.api import load
+from datetime import datetime, timedelta
+import pytz
+import math
+import ephem
+
+# ==================== LOCATION ====================
+lat = 29.4241  # San Antonio
+lon = -98.4936
+GALACTIC_CENTER_RA = 17.7
+
+# ==================== DISCORDIAN DATE ====================
+DISCORDIAN_WEEKDAYS = ['Sweetmorn', 'Boomtime', 'Pungenday', 'Prickle-Prickle', 'Setting Orange']
+DISCORDIAN_SEASONS = ['Chaos', 'Discord', 'Confusion', 'Bureaucracy', 'The Aftermath']
+
+# ==================== TIME CALCULATIONS ====================
+ts = load.timescale()
+eph = load('de421.bsp')
+earth = eph['earth']
+
+def julian_dates():
+    now = ts.now().tt
+    jd = now
+    mjd = jd - 2400000.5
+    return jd, mjd
+
+def discordian_date(now):
+    y = now.year + 1166
+    day_of_year = now.timetuple().tm_yday
+    season = (day_of_year - 1) // 73
+    day_in_season = (day_of_year - 1) % 73 + 1
+    day_of_week = (day_of_year - 1) % 5
+    return f"{DISCORDIAN_WEEKDAYS[day_of_week]}, {DISCORDIAN_SEASONS[season]} {day_in_season}, {y} YOLD"
+
+def sidereal_times():
+    t = ts.now()
+    gst = t.gast
+    lst = (gst + lon/15.0) % 24
+    diff_hrs = (GALACTIC_CENTER_RA - lst) % 24
+    hrs = int(diff_hrs)
+    mins = int((diff_hrs - hrs) * 60)
+    future_time = datetime.now(pytz.UTC) + timedelta(hours=diff_hrs)
+    return gst, lst, hrs, mins, future_time
+
+def thelemic_and_rosicrucian_years(now):
+    thelemic_year = now.year - 1904 + 1
+    rosicrucian_year = now.year + 1317
+    return thelemic_year, rosicrucian_year
+
+def zodiac_sign_from_ecliptic_longitude(lon_ecl):
+    signs = ['Aries','Taurus','Gemini','Cancer','Leo','Virgo','Libra','Scorpio','Sagittarius','Capricorn','Aquarius','Pisces']
+    index = int(lon_ecl//30) % 12
+    return signs[index]
+
+def astro_positions(now):
+    obs = ephem.Observer()
+    obs.lat, obs.lon = str(lat), str(lon)
+    obs.date = now
+    sun = ephem.Sun(obs); sun.compute(obs)
+    moon = ephem.Moon(obs); moon.compute(obs)
+
+    sun_ecl = math.degrees(math.atan2(
+        math.sin(sun.ra)*math.cos(23.43799)-math.tan(sun.dec)*math.sin(23.43799),
+        math.cos(sun.ra)))
+    moon_ecl = math.degrees(math.atan2(
+        math.sin(moon.ra)*math.cos(23.43799)-math.tan(moon.dec)*math.sin(23.43799),
+        math.cos(moon.ra)))
+    return zodiac_sign_from_ecliptic_longitude(sun_ecl), zodiac_sign_from_ecliptic_longitude(moon_ecl), ephem.constellation(moon)[1]
+
+def next_full_and_new_moon(now):
+    obs = ephem.Observer()
+    obs.date = now
+    next_full = ephem.next_full_moon(now)
+    next_new = ephem.next_new_moon(now)
+    full_diff = next_full.datetime() - datetime.utcnow()
+    new_diff = next_new.datetime() - datetime.utcnow()
+    return full_diff, new_diff
+
+# ==================== OUTPUT PANEL ====================
+def output_time_panel():
+    central = pytz.timezone('US/Central')
+    now_utc = datetime.now(pytz.UTC)
+    now_central = now_utc.astimezone(central)
+
+    jd, mjd = julian_dates()
+    gst, lst, hrs, mins, future_time = sidereal_times()
+    ddate = discordian_date(now_utc)
+    thelemic_year, rosicrucian_year = thelemic_and_rosicrucian_years(now_utc)
+    sun_sign, moon_sign, rising_sign = astro_positions(now_utc)
+    full_diff, new_diff = next_full_and_new_moon(now_utc)
+
+    return {
+        "central_time": now_central.strftime('%Y-%m-%d %H:%M:%S'),
+        "zulu_time": now_utc.strftime('%Y-%m-%d %H:%M:%S'),
+        "julian_date": jd,
+        "modified_julian_date": mjd,
+        "discordian_date": ddate,
+        "thelemic_year": thelemic_year,
+        "rosicrucian_year": rosicrucian_year,
+        "sun_sign": sun_sign,
+        "moon_sign": moon_sign,
+        "rising_sign": rising_sign,
+        "gst_hr": gst,
+        "lst_hr": lst,
+        "galactic_bearing": (lst/24)*360,
+        "time_until_galactic_noon_hr": hrs,
+        "time_until_galactic_noon_min": mins,
+        "future_time": future_time.astimezone(central).strftime('%Y-%m-%d %H:%M:%S Central'),
+        "full_moon_days": full_diff.days,
+        "full_moon_hr": full_diff.seconds//3600,
+        "full_moon_min": (full_diff.seconds//60)%60,
+        "new_moon_days": new_diff.days,
+        "new_moon_hr": new_diff.seconds//3600,
+        "new_moon_min": (new_diff.seconds//60)%60
+    }

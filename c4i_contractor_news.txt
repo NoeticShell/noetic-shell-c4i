@@ -1,0 +1,62 @@
+#!/usr/bin/env python3
+import feedparser, json, os
+
+# ==================== CONFIG ====================
+FEEDS = [
+    "https://news.lockheedmartin.com/rss.xml",
+    "https://www.boeing.com/rss/news.xml",
+    "https://www.defensenews.com/arc/outboundfeeds/rss/?outputType=rss",
+    "https://breakingdefense.com/feed/"
+]
+CACHE_FILE = os.path.expanduser("~/.c4i_contractor_cache.json")
+
+# ==================== INIT ====================
+if os.path.exists(CACHE_FILE):
+    with open(CACHE_FILE) as f:
+        cache = json.load(f)
+else:
+    cache = {"index": 0, "articles": [], "recent_articles": []}
+
+def fetch_next_contractor_article():
+    # Fetch new articles if cache is empty
+    if not cache["articles"]:
+        all_articles = []
+        for feed in FEEDS:
+            try:
+                d = feedparser.parse(feed)
+                for entry in d.entries:
+                    all_articles.append(
+                        f"[{entry.get('published','')}] {entry.get('title','')} — {entry.get('link','')}"
+                    )
+            except Exception as e:
+                all_articles.append(f"(Error fetching {feed}: {e})")
+
+        cache["articles"] = all_articles
+
+    index = cache.get("index", 0) % len(cache["articles"])
+    article = cache["articles"][index]
+
+    # Append to rolling list
+    cache.setdefault("recent_articles", [])
+    cache["recent_articles"].append(article)
+
+    # Increment index
+    cache["index"] = index + 1
+
+    # Save cache
+    with open(CACHE_FILE, "w") as f:
+        json.dump(cache, f)
+
+    # Print every 5 articles as a batch
+    if len(cache["recent_articles"]) >= 5:
+        output = "\n".join(cache["recent_articles"])
+        cache["recent_articles"] = []
+        with open(CACHE_FILE, "w") as f:
+            json.dump(cache, f)
+        return output
+    else:
+        return "(collecting contractor articles...)"
+
+# ==================== TESTING ====================
+if __name__ == "__main__":
+    print(fetch_next_contractor_article())
